@@ -6,27 +6,30 @@ import json
 import redis
 from typing import List
 import requests
+import asyncio
+import aiohttp
+
 
 BASE_URL = "http://127.0.0.1:8000"
+
 # create redis client
 redis_client = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
 
 
-async def callback(ch, method, properties, body):
+async def update_unread_msg_count(message):
+    url = f"{BASE_URL}/users/update_unread_msg_count"
+    data = {"new_sender_ids": [message['from']]}
+
+    # I am using await to wait for the request to complete.
+    # async version
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, params={"user_id": message['to']}, json=data) as response:
+            return await response.json()
+
+def callback(ch, method, properties, body):
     message = json.loads(body)
     print(f" [x] Received {message}")
-
-    # now here we have to write the logic to update the counter
-    # for any new message from any sender, this function will be called.
-    # these are micro writes to the DB.
-    # TODO: We will also have to keep buffering new messages somewhere and avoid any micro-reads
-    # for v1, we will do microreads
-    url = f"{BASE_URL}/users/update_unread_msg_count"
-    params = {"user_id": message['to'], "new_sender_ids": list(message['from'])}
-
-    # I am using await since I don't want to wait for the request to complete.
-    response = await requests.post(url, params=params)
-    return response
+    asyncio.run(update_unread_msg_count(message))
 
 
 #############################

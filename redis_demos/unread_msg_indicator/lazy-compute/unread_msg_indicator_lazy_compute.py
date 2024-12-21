@@ -42,11 +42,14 @@ We don't need an API to update the status; the consumer workers can directly wri
 import redis
 from fastapi import FastAPI
 from typing import List
+from pydantic import BaseModel
 
 app = FastAPI()
 # create redis client
 redis_client = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
 
+class UpdateUnreadMsgCountRequest(BaseModel):
+    new_sender_ids: List[int]
 
 @app.post('/users/clear_unread_msg_count')    
 def clear_status(user_id: int):
@@ -68,12 +71,20 @@ def get_status(user_id: int):
         return {user_id: 0}
 
 @app.post("/users/update_unread_msg_count")
-def update_status(user_id: int, new_sender_ids: List):
-    if isinstance(new_sender_ids, List):
+def update_status(user_id: int, request: UpdateUnreadMsgCountRequest):
+    """
+    Update the unread message count for a user.
+
+    Parameters:
+    user_id (int): The ID of the user.
+    request (UpdateUnreadMsgCountRequest): A request body containing a list of sender IDs whose messages are unread.
+    """
+    new_sender_ids = request.new_sender_ids
+    if isinstance(new_sender_ids, list):
         redis_client.sadd(user_id, *new_sender_ids)
         return {"detail": f" [x] - [User: {user_id}] Unread message count update successful."}
     else:
-        return {"detail": f" [x] - `new_sender_ids` must be List type, found {new_sender_ids.dtype} instead."}
+        return {"detail": f" [x] - `new_sender_ids` must be List type, found {type(new_sender_ids)} instead."}
 
 
 

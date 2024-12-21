@@ -31,9 +31,9 @@ def publish_msg_unsent_event(message):
 
 
 if __name__ == "__main__":
-    for i in range(10):
-        time.sleep(i*2)
-        from_, to_ = random.sample(range(1, 40), 2)
+    for i in range(20):
+        time.sleep(2)
+        from_, to_ = random.sample(range(1, 10), 2)
         
         # basically this message was not delivered due to recipient being offline
         # so in this case, an `on_msg_unsent` event will be sent to the chats queue
