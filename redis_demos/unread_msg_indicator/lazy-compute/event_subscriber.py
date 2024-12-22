@@ -1,7 +1,12 @@
 # this code will read the `on_msg_unsent` event and then process it
 # in this case, the process will be to update the unread message counter value
 # Now we need to test this whole system properly
-# TODO: Test the whole system properly and write the test cases and also think about how different componets will scale
+# TODO: 
+# 1. Write unit tests for `flush_buffer`, `update_unread_msg_count`, and `on_message` functions.
+# 2. Write integration tests to ensure the entire message processing flow works correctly.
+# 3. Test the system under load to ensure it can handle a high volume of messages.
+# 4. Consider how to scale the Redis instance and RabbitMQ consumers to handle increased load.
+# 5. Ensure the buffer flushing mechanism works efficiently under different load conditions.
 
 
 import aio_pika
@@ -12,114 +17,74 @@ import asyncio
 import aiohttp
 from collections import defaultdict
 
-
 BASE_URL = "http://127.0.0.1:8000"
-NUM_QUEUES = 10
+NUM_QUEUES = 5
 
-# create redis client
-redis_client = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
-
+redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
 # Buffer to store messages
-message_buffer: Dict[int, List[int]] = defaultdict(list)
+message_buffer: defaultdict[int, List[int]] = defaultdict(list)
 
 
 async def flush_buffer():
     while True:
-        print (f" [x] Flushing buffer...")
         await asyncio.sleep(10)  # Flush every 10 seconds
+        print(f" [x] Flushing buffer...")
+        keys_to_delete = []
         for user_id, sender_ids in message_buffer.items():
             if sender_ids:
                 print(f" [x] Updating unread message count for user_id: {user_id} with sender_ids: {sender_ids}")
                 await update_unread_msg_count(user_id, sender_ids)
-                message_buffer[user_id] = []  # Clear the buffer for the user
+                keys_to_delete.append(user_id) 
 
+        # delete the keys from the buffer
+        for user_id in keys_to_delete:
+            del message_buffer[user_id]
 
 async def update_unread_msg_count(user_id: int, sender_ids: List[int]):
     url = f"{BASE_URL}/users/update_unread_msg_count"
     data = {"new_sender_ids": sender_ids}
 
-    # I am using await to wait for the request to complete.
     # async version
     async with aiohttp.ClientSession() as session:
         async with session.post(url, params={"user_id":user_id}, json=data) as response:
+            print(f" [x] Response: {await response.json()}")
             return await response.json()
 
-# def callback(ch, method, properties, body):
-#     message = json.loads(body)
-#     print(f" [x] Received {message}")
-#     user_id = message['to']
-#     sender_id = message['from']
-#     message_buffer[user_id].append(sender_id)
-#     print (f" [x] Buffer: {message_buffer}")
-
-async def on_message(message: aio_pika.IncomingMessage):
+async def on_message(message: aio_pika.IncomingMessage, queue_name: str):
     async with message.process():
         message_body = json.loads(message.body)
-        print(f" [x] Received {message_body}")
         user_id = message_body['to']
+        print(f" [x] Received {message_body} from queue {queue_name} for user_id: {user_id}")
         sender_id = message_body['from']
         message_buffer[user_id].append(sender_id)
         print(f" [x] Buffer: {message_buffer}")
 
 
-#############################
-###### Event consumers ######
-#############################
-# async def archive_main():
-
-#     # start the buffer flushing task
-#     asyncio.create_task(flush_buffer())
-
-#     # setup RabbitMQ connection
-#     connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
-#     channel = connection.channel()
-
-
-#     # fanout exchange broadcasts the messages it receives to all the queues it knows
-#     channel.exchange_declare(exchange='whatsapp', exchange_type='fanout')
-
-#     # we declare a quue called `chats`
-#     channel.queue_declare(queue='chats', durable=True)
-
-#     # now we need to bind the exchange with the queue
-#     channel.queue_bind(exchange='whatsapp', queue='chats')
-
-#     print (f" [*] Waiting for messages. To exit press CTRL+C")
-
-#     # Start consuming messages
-#     # auto_ack = True acknowledges as soon as messages are received. no explicity acknowledgement is required from teh consumer
-#     channel.basic_consume(queue='chats', on_message_callback=callback, auto_ack=True)
-
-
-#     try:
-#         channel.start_consuming()
-#     except KeyboardInterrupt:
-#         print (f" [*] Exiting...")
-#         channel.stop_consuming()
-#     finally:
-#         connection.close()
-
 async def main():
     # Start the buffer flushing task
     asyncio.create_task(flush_buffer())
-
+    
     # Setup RabbitMQ consumer
     connection = await aio_pika.connect_robust("amqp://guest:guest@localhost/")
     channel = await connection.channel()
 
     await channel.set_qos(prefetch_count=1)
 
-    exchange = await channel.declare_exchange('whatsapp', aio_pika.ExchangeType.FANOUT)
+    exchange = await channel.declare_exchange('whatsapp', aio_pika.ExchangeType.DIRECT)
 
-    queue = await channel.declare_queue('chats', durable=True)
-    
-    await queue.bind(exchange)
-    await queue.consume(on_message)
+    for i in range(NUM_QUEUES):
+        queue_name = f'chats_{i}'
+        queue = await channel.declare_queue(queue_name, durable=True)
+        await queue.bind(exchange, routing_key=str(i))
+        await queue.consume(lambda message: on_message(message=message, queue_name=queue_name))
 
     print(f" [*] Waiting for messages. To exit press CTRL+C")
 
-    await asyncio.Future()  # run forever
+    await asyncio.Future()  # Keep the event loop running indefinitely
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        print(f"An error occurred: {e}")
