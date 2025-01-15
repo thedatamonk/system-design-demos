@@ -24,8 +24,26 @@ def ingest_docs_in_es():
         es.index(index='documents', id=i+1, body=doc)
 
 # utility to deal with searching of docs in Elasticsearch
-def search():
-    pass
+def search(query):
+    es = Elasticsearch([{'host': 'localhost', 'port': 9200, 'scheme': 'http'}],
+                       basic_auth=(username, password)
+    )
+
+    # exact match
+    response = es.search(
+        index='documents',
+        body={
+            "query": {
+                "multi_match": {
+                    'query': query,
+                    'fields': ['title', 'content']
+                }
+            }
+        }
+    )
+
+
+    return response['hits']['hits']
 
 # utility to log all searches in Elasticsearch
 # this logging can happen synchronously or asynchronously
@@ -40,7 +58,11 @@ def store_recent_searches():
 
 
 if __name__ == "__main__":
-    ingest_docs_in_es()
-    # search()
+    # ingest_docs_in_es()
+    query1 = 'Document'
+    results = search(query=query1)
+    for result in results:
+        print(result['_source'])
+    
     # log_search()
     # store_recent_searches()
