@@ -4,13 +4,15 @@ import os
 from datetime import datetime, timezone
 import pika
 import json
-
+import redis
 
 load_dotenv(dotenv_path="../../.env", override=True)
 
 username = os.getenv("ES_LOCAL_USERNAME")
 password = os.getenv("ES_LOCAL_PASSWORD")
 
+# Initialize Redis connection
+redis_client = redis.StrictRedis(host='localhost', port=6379, db=0, decode_responses=True)
 # utility to ingest docs in Elasticsearch
 def ingest_docs_in_es():
     es = Elasticsearch([{'host': 'localhost', 'port': 9200, 'scheme': 'http'}],
@@ -29,11 +31,15 @@ def ingest_docs_in_es():
         es.index(index='documents', body=doc)
 
 # utility to deal with searching of docs in Elasticsearch
-def search(query, synchronous_logging=True):
+def search(query, user_id, synchronous_logging=True):
     es = Elasticsearch([{'host': 'localhost', 'port': 9200, 'scheme': 'http'}],
                        basic_auth=(username, password)
     )
-    # exact match
+    
+    ##########################################
+    #### Search for docs in Elasticsearch ####
+    ##########################################
+
     response = es.search(
         index='documents',
         body={
@@ -47,6 +53,17 @@ def search(query, synchronous_logging=True):
             }
         }
     )
+
+    ##################################
+    # Store recent searches in Redis #
+    ##################################
+    store_recent_searches(user_id, query)
+
+
+
+    ##################################
+    #### Logging the search query ####
+    ##################################
     # synchronous logging
     if synchronous_logging:
         log_search(query)
@@ -94,22 +111,25 @@ def publish_log_search_event(query):
     connection.close()
 
 # utility to store last N recent searches in Redis as KV pairs
-def store_recent_searches():
-    pass
-
+def store_recent_searches(user_id, query):
+    print (f"Storing query {query} in Redis for user {user_id}...")
+    key = f"recent-searches:{user_id}"
+    redis_client.lpush(key, query)
+    redis_client.ltrim(key, 0, 9) # Keep only the last 10 searches
 
 if __name__ == "__main__":
     # ingest_docs_in_es()
 
 
-    queries = ['Content', 'interesting', 'Borings', 'boring', 'Not 1', 'Note 31']
+    queries = ['Content', 'interesting', 'Borings', 'boring']
 
     for user_query in queries:
         # This search function can later be invoked by a search API
         # to return search results to the user
         # Currently, it performs full text search on the title and content fields
         # But later, it can be modified to include more complex search algorithms
-        search_results = search(query=user_query, synchronous_logging=False)
+        user_id = "rohil-pal"
+        search_results = search(query=user_query, user_id=user_id, synchronous_logging=False)
         print(f"Search results for query: {user_query}")
         for result in search_results:
             print(result['_source'])
