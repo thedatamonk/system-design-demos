@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Page</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        .payment-container {
+            text-align: center;
+        }
+        .pay-button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .pay-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="payment-container">
+        <h1>Aurora Ventures</h1>
+        <button class="pay-button" onclick="makePayment()">Pay with Razorpay</button>
+    </div>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+        async function makePayment() {
+            const configResponse = await fetch("/config");
+            const config = await configResponse.json();
+
+            const orderResponse = await fetch("/create_order", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                }
+            });
+
+            const orderData = await orderResponse.json();
+
+            var options = {
+                "key": config.key,
+                "currency": "INR",
+                "name": "Aurora Ventures",
+                "description": "2 bottles of Naso Profumi Perfumes",
+                "image": "/static/logo.png",
+                "order_id": orderData.order_id,
+                "amount": orderData.amount,
+                "callback_url": "/success",
+                "prefill": {
+                    "name": "Kriti Sanon",
+                    "email": "kriti.sanon@gmail.com",
+                    "contact": "9999999999"
+                },
+                "notes": {
+                    "address": "Aurora Ventures, 123, MG Road, Bangalore"
+                },
+                "theme": {
+                    "color": "#3399cc"
+                }
+            };
+
+            var rzp = new Razorpay(options);
+            rzp.open();
+        }
+    </script>
+</body>
+</html>
