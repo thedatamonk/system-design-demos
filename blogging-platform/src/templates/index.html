@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blog Home</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <form action="/search" method="GET">
+                <input type="search" name="query" class="form-input" placeholder="Search Here">
+                <button type="submit" class="btn btn-pink">Search</button>
+            </form>
+        </nav>
+    </header>
+    <main>
+        <h1 class="main-header">Welcome to Our Blog</h1>
+        <div class="blog-grid">
+            {% for blog in blogs %}
+            <div class="blog-preview">
+                <h2>{{blog.title}}</h2>
+                <h4>Published by: {{blog.author_id}}</h4>
+                <p>{{blog.content}}</p>
+                <a href="/blog/{{blog.id}}" class="btn btn-read-more">Read More</a>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="create-blog">
+            <a href="/create" class="btn btn-create">Create New Blog</a>
+        </div>
+    </main>
+</body>
+</html>
